@@ -11,6 +11,7 @@ import (
 	"sync"
 	"log"
 	"reflect"
+	"time"
 )
 
 type rbroker struct {
@@ -130,7 +131,8 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 			r.lock.Unlock()
 			if err != nil {
 				log.Printf("r.conn.Consume error. type=%s, value -> %s",reflect.TypeOf(err).String(),err.Error())
-				break
+				time.Sleep(1*time.Second)
+				continue
 			}
 			for d := range sub {
 				go fn(d)
