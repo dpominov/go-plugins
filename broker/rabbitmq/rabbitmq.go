@@ -121,12 +121,17 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 	go func() {
 		for {
 			r.lock.Lock()// когда-нибудь у нас будет больше 1 потока
+			if !r.conn.connected {// может упасть с паникой если делать Consume без соединения
+				time.Sleep(1 * time.Second)
+				r.lock.Unlock()
+				continue
+			}
 			_, sub, err := r.conn.Consume(
-			opt.Queue,
-			topic,
-			headers,
-			opt.AutoAck,
-			durableQueue,
+				opt.Queue,
+				topic,
+				headers,
+				opt.AutoAck,
+				durableQueue,
 			)
 			r.lock.Unlock()
 			if err != nil {
