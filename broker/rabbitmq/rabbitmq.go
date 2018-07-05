@@ -9,8 +9,6 @@ import (
 	"github.com/micro/go-micro/cmd"
 	"github.com/streadway/amqp"
 	"sync"
-	"log"
-	"reflect"
 	"time"
 )
 
@@ -19,9 +17,12 @@ type rbroker struct {
 	addrs []string
 	opts  broker.Options
 	lock sync.Mutex
+	wg sync.WaitGroup
 }
 
 type subscriber struct {
+	lock sync.Mutex
+	mayRun bool
 	opts  broker.SubscribeOptions
 	topic string
 	ch    *rabbitMQChannel
@@ -58,7 +59,13 @@ func (s *subscriber) Topic() string {
 }
 
 func (s *subscriber) Unsubscribe() error {
-	return s.ch.Close()
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.mayRun=false
+	if s.ch != nil {
+		return s.ch.Close()
+	}
+	return nil
 }
 
 func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.PublishOption) error {
@@ -115,18 +122,23 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 		handler(&publication{d: msg, m: m, t: msg.RoutingKey})
 	}
 
-	//ToDo: пул горутин
-	//ToDo: при завершении ожидаем окончания работы го-рутин
-	//ToDo: при закрытии канала выполняем переподписку на ребит - канал может закрываться при штатных ситуациях
-	go func() {
+	sret := &subscriber{ch: nil, topic: topic, opts: opt, mayRun:true}
+
+	go func(s*subscriber) {
 		for {
+			s.lock.Lock()
+			mayRun := s.mayRun
+			s.lock.Unlock()
+			if !mayRun {
+				break
+			}
 			r.lock.Lock()// когда-нибудь у нас будет больше 1 потока
 			if !r.conn.connected {// может упасть с паникой если делать Consume без соединения
 				time.Sleep(1 * time.Second)
 				r.lock.Unlock()
 				continue
 			}
-			_, sub, err := r.conn.Consume(
+			ch, sub, err := r.conn.Consume(
 				opt.Queue,
 				topic,
 				headers,
@@ -134,20 +146,33 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 				durableQueue,
 			)
 			r.lock.Unlock()
-			if err != nil {
-				log.Printf("r.conn.Consume error. connected=%t, type=%s, value -> %s",r.conn.connected,reflect.TypeOf(err).String(),err.Error())
+			switch err {
+			case nil:
+				s.lock.Lock()
+				s.ch=ch
+				if !s.mayRun {// кто-то попросил остановиться пока мы подключались, отключаемся
+					ch.channel.Close()
+					s.lock.Unlock()
+					continue
+				}
+				s.lock.Unlock()
+			default:
+				//log.Printf("r.conn.Consume error. connected=%t, type=%s, value -> %s",r.conn.connected,reflect.TypeOf(err).String(),err.Error())
 				time.Sleep(1*time.Second)
 				continue
 			}
 			for d := range sub {
-				go fn(d)
+				r.wg.Add(1)
+				go func(d amqp.Delivery) {
+					fn(d)
+					r.wg.Done()
+				}(d)
 			}
-
 		}// sub может заканчиваться и требуется переподписка
 
-	}()
+	}(sret)
 
-	return nil, nil
+	return sret, nil
 }
 
 func (r *rbroker) Options() broker.Options {
@@ -183,7 +208,9 @@ func (r *rbroker) Disconnect() error {
 	if r.conn == nil {
 		return errors.New("connection is nil")
 	}
-	return r.conn.Close()
+	ret := r.conn.Close()
+	r.wg.Wait() // wait all goroutines
+	return ret
 }
 
 func NewBroker(opts ...broker.Option) broker.Broker {
