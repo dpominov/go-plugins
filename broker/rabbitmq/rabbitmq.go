@@ -8,12 +8,16 @@ import (
 	"github.com/micro/go-micro/broker"
 	"github.com/micro/go-micro/cmd"
 	"github.com/streadway/amqp"
+	"sync"
+	"log"
+	"reflect"
 )
 
 type rbroker struct {
 	conn  *rabbitMQConn
 	addrs []string
 	opts  broker.Options
+	lock sync.Mutex
 }
 
 type subscriber struct {
@@ -98,17 +102,6 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 		return nil, errors.New("connection is nil")
 	}
 
-	ch, sub, err := r.conn.Consume(
-		opt.Queue,
-		topic,
-		headers,
-		opt.AutoAck,
-		durableQueue,
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	fn := func(msg amqp.Delivery) {
 		header := make(map[string]string)
 		for k, v := range msg.Headers {
@@ -121,13 +114,33 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 		handler(&publication{d: msg, m: m, t: msg.RoutingKey})
 	}
 
+	//ToDo: пул горутин
+	//ToDo: при завершении ожидаем окончания работы го-рутин
+	//ToDo: при закрытии канала выполняем переподписку на ребит - канал может закрываться при штатных ситуациях
 	go func() {
-		for d := range sub {
-			go fn(d)
-		}
+		for {
+			r.lock.Lock()// когда-нибудь у нас будет больше 1 потока
+			_, sub, err := r.conn.Consume(
+			opt.Queue,
+			topic,
+			headers,
+			opt.AutoAck,
+			durableQueue,
+			)
+			r.lock.Unlock()
+			if err != nil {
+				log.Printf("r.conn.Consume error. type=%s, value -> %s",reflect.TypeOf(err).String(),err.Error())
+				break
+			}
+			for d := range sub {
+				go fn(d)
+			}
+
+		}// sub может заканчиваться и требуется переподписка
+
 	}()
 
-	return &subscriber{ch: ch, topic: topic, opts: opt}, nil
+	return nil, nil
 }
 
 func (r *rbroker) Options() broker.Options {
