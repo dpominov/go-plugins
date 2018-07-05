@@ -130,7 +130,7 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 			)
 			r.lock.Unlock()
 			if err != nil {
-				log.Printf("r.conn.Consume error. type=%s, value -> %s",reflect.TypeOf(err).String(),err.Error())
+				log.Printf("r.conn.Consume error. connected=%t, type=%s, value -> %s",r.conn.connected,reflect.TypeOf(err).String(),err.Error())
 				time.Sleep(1*time.Second)
 				continue
 			}
