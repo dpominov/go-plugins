@@ -8,7 +8,7 @@ import (
 	"github.com/micro/go-micro/codec"
 	"github.com/micro/go-micro/codec/jsonrpc"
 	"github.com/micro/go-micro/codec/protorpc"
-	"google.golang.org/grpc"
+	"github.com/micro/grpc-go"
 )
 
 type jsonCodec struct{}

@@ -20,9 +20,9 @@ import (
 	"github.com/micro/go-micro/selector"
 	"github.com/micro/go-micro/transport"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	gmetadata "google.golang.org/grpc/metadata"
+	"github.com/micro/grpc-go"
+	"github.com/micro/grpc-go/credentials"
+	gmetadata "github.com/micro/grpc-go/metadata"
 )
 
 type grpcClient struct {
@@ -142,7 +142,15 @@ func (g *grpcClient) stream(ctx context.Context, address string, req client.Requ
 		return nil, errors.InternalServerError("go.micro.client", err.Error())
 	}
 
-	cc, err := grpc.Dial(address, grpc.WithCodec(cf), grpc.WithTimeout(opts.DialTimeout), g.secure())
+	var dialCtx context.Context
+	var cancel context.CancelFunc
+	if opts.DialTimeout >= 0 {
+		dialCtx, cancel = context.WithTimeout(ctx, opts.DialTimeout)
+	} else {
+		dialCtx, cancel = context.WithCancel(ctx)
+	}
+	defer cancel()
+	cc, err := grpc.DialContext(dialCtx, address, grpc.WithCodec(cf), g.secure())
 	if err != nil {
 		return nil, errors.InternalServerError("go.micro.client", fmt.Sprintf("Error sending request: %v", err))
 	}
@@ -341,17 +349,7 @@ func (g *grpcClient) Stream(ctx context.Context, req client.Request, opts ...cli
 		return nil, err
 	}
 
-	// check if we already have a deadline
-	d, ok := ctx.Deadline()
-	if !ok {
-		// no deadline so we create a new one
-		ctx, _ = context.WithTimeout(ctx, callOpts.RequestTimeout)
-	} else {
-		// got a deadline so no need to setup context
-		// but we need to set the timeout we pass along
-		opt := client.WithRequestTimeout(d.Sub(time.Now()))
-		opt(&callOpts)
-	}
+	// #200 - streams shouldn't have a request timeout set on the context
 
 	// should we noop right here?
 	select {

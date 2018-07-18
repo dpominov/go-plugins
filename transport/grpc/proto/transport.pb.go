@@ -18,7 +18,7 @@ import math "math"
 
 import (
 	context "golang.org/x/net/context"
-	grpc "google.golang.org/grpc"
+	grpc "github.com/micro/grpc-go"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.

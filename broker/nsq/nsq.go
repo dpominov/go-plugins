@@ -2,6 +2,7 @@
 package nsq
 
 import (
+	"context"
 	"math/rand"
 	"sync"
 	"time"
@@ -14,9 +15,10 @@ import (
 )
 
 type nsqBroker struct {
-	addrs  []string
-	opts   broker.Options
-	config *nsq.Config
+	lookupdAddrs []string
+	addrs        []string
+	opts         broker.Options
+	config       *nsq.Config
 
 	sync.Mutex
 	running bool
@@ -56,7 +58,23 @@ func (n *nsqBroker) Init(opts ...broker.Option) error {
 	for _, o := range opts {
 		o(&n.opts)
 	}
+
+	n.initByContext(n.opts.Context)
+
 	return nil
+}
+
+func (n *nsqBroker) initByContext(ctx context.Context) {
+	if v, ok := ctx.Value(lookupdAddrsKey{}).([]string); ok {
+		n.lookupdAddrs = v
+	}
+
+	if v, ok := ctx.Value(consumerOptsKey{}).([]string); ok {
+		cfgFlag := &nsq.ConfigFlag{Config: n.config}
+		for _, opt := range v {
+			cfgFlag.Set(opt)
+		}
+	}
 }
 
 func (n *nsqBroker) Options() broker.Options {
@@ -64,7 +82,7 @@ func (n *nsqBroker) Options() broker.Options {
 }
 
 func (n *nsqBroker) Address() string {
-	return n.addrs[rand.Int()%len(n.addrs)]
+	return n.addrs[rand.Intn(len(n.addrs))]
 }
 
 func (n *nsqBroker) Connect() error {
@@ -83,7 +101,9 @@ func (n *nsqBroker) Connect() error {
 		if err != nil {
 			return err
 		}
-
+		if err = p.Ping(); err != nil {
+			return err
+		}
 		producers = append(producers, p)
 	}
 
@@ -91,7 +111,7 @@ func (n *nsqBroker) Connect() error {
 	for _, c := range n.c {
 		channel := c.opts.Queue
 		if len(channel) == 0 {
-			channel = uuid.NewUUID().String()
+			channel = uuid.NewUUID().String() + "#ephemeral"
 		}
 
 		cm, err := nsq.NewConsumer(c.topic, channel, n.config)
@@ -103,9 +123,13 @@ func (n *nsqBroker) Connect() error {
 
 		c.c = cm
 
-		err = c.c.ConnectToNSQDs(n.addrs)
-		if err != nil {
-			return err
+		if len(n.lookupdAddrs) > 0 {
+			c.c.ConnectToNSQLookupds(n.lookupdAddrs)
+		} else {
+			err = c.c.ConnectToNSQDs(n.addrs)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -131,9 +155,16 @@ func (n *nsqBroker) Disconnect() error {
 	for _, c := range n.c {
 		c.c.Stop()
 
-		// disconnect from all nsq brokers
-		for _, addr := range n.addrs {
-			c.c.DisconnectFromNSQD(addr)
+		if len(n.lookupdAddrs) > 0 {
+			// disconnect from all lookupd
+			for _, addr := range n.lookupdAddrs {
+				c.c.DisconnectFromNSQLookupd(addr)
+			}
+		} else {
+			// disconnect from all nsq brokers
+			for _, addr := range n.addrs {
+				c.c.DisconnectFromNSQD(addr)
+			}
 		}
 	}
 
@@ -143,13 +174,42 @@ func (n *nsqBroker) Disconnect() error {
 }
 
 func (n *nsqBroker) Publish(topic string, message *broker.Message, opts ...broker.PublishOption) error {
-	p := n.p[rand.Int()%len(n.p)]
+	p := n.p[rand.Intn(len(n.p))]
+
+	options := broker.PublishOptions{}
+	for _, o := range opts {
+		o(&options)
+	}
+
+	var (
+		doneChan chan *nsq.ProducerTransaction
+		delay    time.Duration
+	)
+	if options.Context != nil {
+		if v, ok := options.Context.Value(asyncPublishKey{}).(chan *nsq.ProducerTransaction); ok {
+			doneChan = v
+		}
+		if v, ok := options.Context.Value(deferredPublishKey{}).(time.Duration); ok {
+			delay = v
+		}
+	}
 
 	b, err := n.opts.Codec.Marshal(message)
 	if err != nil {
 		return err
 	}
-	return p.Publish(topic, b)
+
+	if doneChan != nil {
+		if delay > 0 {
+			return p.DeferredPublishAsync(topic, delay, b, doneChan)
+		}
+		return p.PublishAsync(topic, b, doneChan)
+	} else {
+		if delay > 0 {
+			return p.DeferredPublish(topic, delay, b)
+		}
+		return p.Publish(topic, b)
+	}
 }
 
 func (n *nsqBroker) Subscribe(topic string, handler broker.Handler, opts ...broker.SubscribeOption) (broker.Subscriber, error) {
@@ -161,25 +221,23 @@ func (n *nsqBroker) Subscribe(topic string, handler broker.Handler, opts ...brok
 		o(&options)
 	}
 
-	var concurrency int
-
+	concurrency, maxInFlight := DefaultConcurrentHandlers, DefaultConcurrentHandlers
 	if options.Context != nil {
-		var ok bool
-		concurrency, ok = options.Context.Value(concurrentHandlerKey).(int)
-		if !ok {
-			concurrency = DefaultConcurrentHandlers
+		if v, ok := options.Context.Value(concurrentHandlerKey{}).(int); ok {
+			maxInFlight, concurrency = v, v
 		}
-	} else {
-		concurrency = DefaultConcurrentHandlers
-
+		if v, ok := options.Context.Value(maxInFlightKey{}).(int); ok {
+			maxInFlight = v
+		}
 	}
-
 	channel := options.Queue
 	if len(channel) == 0 {
-		channel = uuid.NewUUID().String()
+		channel = uuid.NewUUID().String() + "#ephemeral"
 	}
+	config := *n.config
+	config.MaxInFlight = maxInFlight
 
-	c, err := nsq.NewConsumer(topic, channel, n.config)
+	c, err := nsq.NewConsumer(topic, channel, &config)
 	if err != nil {
 		return nil, err
 	}
@@ -200,22 +258,30 @@ func (n *nsqBroker) Subscribe(topic string, handler broker.Handler, opts ...brok
 			m:     &m,
 			nm:    nm,
 		})
-
 	})
 
 	c.AddConcurrentHandlers(h, concurrency)
 
-	err = c.ConnectToNSQDs(n.addrs)
+	if len(n.lookupdAddrs) > 0 {
+		err = c.ConnectToNSQLookupds(n.lookupdAddrs)
+	} else {
+		err = c.ConnectToNSQDs(n.addrs)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	return &subscriber{
-		topic: topic,
+	sub := &subscriber{
 		c:     c,
+		opts:  options,
+		topic: topic,
 		h:     h,
 		n:     concurrency,
-	}, nil
+	}
+
+	n.c = append(n.c, sub)
+
+	return sub, nil
 }
 
 func (n *nsqBroker) String() string {
@@ -252,26 +318,28 @@ func NewBroker(opts ...broker.Option) broker.Broker {
 	options := broker.Options{
 		// Default codec
 		Codec: json.NewCodec(),
+		// Default context
+		Context: context.Background(),
 	}
 
 	for _, o := range opts {
 		o(&options)
 	}
 
-	var cAddrs []string
+	var addrs []string
 
 	for _, addr := range options.Addrs {
 		if len(addr) > 0 {
-			cAddrs = append(cAddrs, addr)
+			addrs = append(addrs, addr)
 		}
 	}
 
-	if len(cAddrs) == 0 {
-		cAddrs = []string{"127.0.0.1:4150"}
+	if len(addrs) == 0 {
+		addrs = []string{"127.0.0.1:4150"}
 	}
 
 	return &nsqBroker{
-		addrs:  cAddrs,
+		addrs:  addrs,
 		opts:   options,
 		config: nsq.NewConfig(),
 	}

@@ -26,12 +26,12 @@ import (
 	"github.com/micro/util/go/lib/addr"
 	mgrpc "github.com/micro/util/go/lib/grpc"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/transport"
+	"github.com/micro/grpc-go"
+	"github.com/micro/grpc-go/codes"
+	"github.com/micro/grpc-go/credentials"
+	"github.com/micro/grpc-go/metadata"
+	"github.com/micro/grpc-go/status"
+	"github.com/micro/grpc-go/transport"
 )
 
 const (

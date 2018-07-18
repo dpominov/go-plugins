@@ -10,8 +10,8 @@ import (
 	"github.com/micro/go-micro/server"
 	"github.com/micro/go-micro/server/debug"
 	"github.com/micro/go-micro/transport"
-	"google.golang.org/grpc"
-	grpcTransport "google.golang.org/grpc/transport"
+	"github.com/micro/grpc-go"
+	grpcTransport "github.com/micro/grpc-go/transport"
 )
 
 type codecsKey struct{}

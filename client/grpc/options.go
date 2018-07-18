@@ -6,7 +6,7 @@ import (
 	"crypto/tls"
 
 	"github.com/micro/go-micro/client"
-	"google.golang.org/grpc"
+	"github.com/micro/grpc-go"
 )
 
 type codecsKey struct{}

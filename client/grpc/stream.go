@@ -7,7 +7,7 @@ import (
 
 	"github.com/micro/go-micro/client"
 
-	"google.golang.org/grpc"
+	"github.com/micro/grpc-go"
 )
 
 // Implements the streamer interface

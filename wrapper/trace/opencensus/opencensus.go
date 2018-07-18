@@ -114,12 +114,11 @@ func NewHandlerWrapper() server.HandlerWrapper {
 
 			spanCtx := getTraceFromCtx(ctx)
 			if spanCtx != nil {
-				t.span = trace.NewSpanWithRemoteParent(
+				ctx, t.span = trace.StartSpanWithRemoteParent(
+					ctx,
 					fmt.Sprintf("rpc/%s/%s/%s", ServerProfile.Role, req.Service(), req.Method()),
 					*spanCtx,
-					trace.StartOptions{},
 				)
-				ctx = trace.WithSpan(ctx, t.span)
 			} else {
 				ctx, t.span = trace.StartSpan(
 					ctx,
@@ -145,12 +144,11 @@ func NewSubscriberWrapper() server.SubscriberWrapper {
 
 			spanCtx := getTraceFromCtx(ctx)
 			if spanCtx != nil {
-				t.span = trace.NewSpanWithRemoteParent(
+				ctx, t.span = trace.StartSpanWithRemoteParent(
+					ctx,
 					fmt.Sprintf("rpc/%s/pubsub/%s", ServerProfile.Role, p.Topic()),
 					*spanCtx,
-					trace.StartOptions{},
 				)
-				ctx = trace.WithSpan(ctx, t.span)
 			} else {
 				ctx, t.span = trace.StartSpan(
 					ctx,

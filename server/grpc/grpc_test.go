@@ -6,7 +6,7 @@ import (
 
 	"github.com/micro/go-micro/registry/mock"
 	"github.com/micro/go-micro/server"
-	"google.golang.org/grpc"
+	"github.com/micro/grpc-go"
 
 	pb "github.com/micro/examples/greeter/srv/proto/hello"
 )

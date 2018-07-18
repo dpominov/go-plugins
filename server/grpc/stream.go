@@ -38,9 +38,9 @@ import (
 	"context"
 	"io"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/transport"
+	"github.com/micro/grpc-go"
+	"github.com/micro/grpc-go/codes"
+	"github.com/micro/grpc-go/transport"
 
 	"github.com/micro/go-micro/server"
 )

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
+	"github.com/micro/grpc-go"
 )
 
 type pool struct {
