@@ -60,7 +60,7 @@ func (r *rabbitMQChannel) DeclareExchange(exchange string) error {
 	return r.channel.ExchangeDeclare(
 		exchange, // name
 		"topic",  // kind
-		false,    // durable
+		true,    // durable
 		false,    // autoDelete
 		false,    // internal
 		false,    // noWait
