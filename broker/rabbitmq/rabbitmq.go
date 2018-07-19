@@ -103,6 +103,7 @@ func (s *subscriber) resubscribe() {
 			continue
 		}
 
+		s.r.conn.Channel.channel.Qos(1000,100*1024,true)
 		ch, sub, err := s.r.conn.Consume(
 			s.opts.Queue,
 			s.topic,
@@ -110,7 +111,6 @@ func (s *subscriber) resubscribe() {
 			s.opts.AutoAck,
 			s.durableQueue,
 		)
-		s.r.conn.Channel.channel.Qos(1000,100*1024,true)
 
 		s.r.mtx.Unlock()
 		switch err {
