@@ -144,7 +144,7 @@ func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.Publ
 		o(&opt)
 	}
 
-	//persistent := uint8(2)
+	persistent := uint8(2)
 	//if opt.Context != nil && opt.Context.Value(persistentDelivery{}).(bool) {
 	//	persistent = 2
 	//}
@@ -152,7 +152,7 @@ func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.Publ
 	m := amqp.Publishing{
 		Body:    msg.Body,
 		Headers: amqp.Table{},
-		//DeliveryMode:persistent,
+		DeliveryMode:persistent,
 	}
 
 	for k, v := range msg.Header {
