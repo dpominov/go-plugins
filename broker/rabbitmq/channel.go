@@ -29,6 +29,8 @@ func newRabbitChannel(conn *amqp.Connection) (*rabbitMQChannel, error) {
 	if err := rabbitCh.Connect(); err != nil {
 		return nil, err
 	}
+
+	rabbitCh.channel.Qos(1000,100*1024,true)
 	return rabbitCh, nil
 
 }

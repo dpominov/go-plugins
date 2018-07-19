@@ -102,6 +102,7 @@ func (s *subscriber) resubscribe() {
 			s.r.mtx.Unlock()
 			continue
 		}
+
 		ch, sub, err := s.r.conn.Consume(
 			s.opts.Queue,
 			s.topic,
