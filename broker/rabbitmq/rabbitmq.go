@@ -110,6 +110,8 @@ func (s *subscriber) resubscribe() {
 			s.opts.AutoAck,
 			s.durableQueue,
 		)
+		s.r.conn.Channel.channel.Qos(1000,100*1024,true)
+
 		s.r.mtx.Unlock()
 		switch err {
 		case nil:
