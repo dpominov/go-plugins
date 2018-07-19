@@ -141,7 +141,7 @@ func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.Publ
 		o(&opt)
 	}
 
-	persistent := uint8(1)
+	persistent := uint8(2)
 	if opt.Context.Value(persistentDelivery{}).(bool) {
 		persistent = 2
 	}
