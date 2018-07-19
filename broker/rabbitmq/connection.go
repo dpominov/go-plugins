@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/streadway/amqp"
+	"log"
 )
 
 var (
@@ -198,6 +199,10 @@ func (r *rabbitMQConn) Consume(queue, key string, headers amqp.Table, autoAck, d
 
 	if err != nil {
 		return nil, nil, err
+	}
+
+	if err=consumerChannel.channel.Qos(1000,100*1024,false); err!= nil {
+		log.Println(err)
 	}
 
 	deliveries, err := consumerChannel.ConsumeQueue(queue, autoAck)
