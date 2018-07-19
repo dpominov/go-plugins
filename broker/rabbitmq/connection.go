@@ -178,7 +178,7 @@ func (r *rabbitMQConn) tryConnect(secure bool, config *tls.Config) error {
 		return err
 	}
 
-	r.Channel.DeclareExchange(r.exchange)
+	r.Channel.DeclareDurableExchange(r.exchange)
 	r.ExchangeChannel, err = newRabbitChannel(r.Connection)
 
 	return err
