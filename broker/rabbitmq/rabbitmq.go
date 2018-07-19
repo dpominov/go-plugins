@@ -135,9 +135,21 @@ func (s *subscriber) resubscribe() {
 }
 
 func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.PublishOption) error {
+	opt := broker.PublishOptions{}
+
+	for _, o := range opts {
+		o(&opt)
+	}
+
+	persistent := uint8(1)
+	if opt.Context.Value(persistentDelivery{}).(bool) {
+		persistent = 2
+	}
+
 	m := amqp.Publishing{
 		Body:    msg.Body,
 		Headers: amqp.Table{},
+		DeliveryMode:persistent,
 	}
 
 	for k, v := range msg.Header {
