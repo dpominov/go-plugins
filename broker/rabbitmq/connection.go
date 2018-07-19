@@ -201,7 +201,7 @@ func (r *rabbitMQConn) Consume(queue, key string, headers amqp.Table, autoAck, d
 		return nil, nil, err
 	}
 
-	if err=consumerChannel.channel.Qos(1000,100*1024,false); err!= nil {
+	if err=consumerChannel.channel.Qos(1000,0,false); err!= nil {
 		log.Println(err)
 	}
 
