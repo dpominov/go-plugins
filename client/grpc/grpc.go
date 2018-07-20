@@ -245,12 +245,12 @@ func (g *grpcClient) Call(ctx context.Context, req client.Request, rsp interface
 	for _, opt := range opts {
 		opt(&callOpts)
 	}
-
+	log.Log("g.next")
 	next, err := g.next(req, callOpts)
 	if err != nil {
 		return err
 	}
-
+	log.Log("deadline")
 	// check if we already have a deadline
 	d, ok := ctx.Deadline()
 	if !ok {
@@ -262,42 +262,48 @@ func (g *grpcClient) Call(ctx context.Context, req client.Request, rsp interface
 		opt := client.WithRequestTimeout(d.Sub(time.Now()))
 		opt(&callOpts)
 	}
-
+	log.Log("wait done")
 	// should we noop right here?
 	select {
 	case <-ctx.Done():
+		log.Log("ctx->Done")
 		return errors.New("go.micro.client", fmt.Sprintf("%v", ctx.Err()), 408)
 	default:
 	}
 
 	// make copy of call method
 	gcall := g.call
-
+	log.Log("wrap")
 	// wrap the call in reverse
 	for i := len(callOpts.CallWrappers); i > 0; i-- {
 		gcall = callOpts.CallWrappers[i-1](gcall)
 	}
-
+	log.Log("declare call")
 	// return errors.New("go.micro.client", "request timeout", 408)
 	call := func(i int) error {
 		// call backoff first. Someone may want an initial start delay
+		log.Log("backoff",i)
 		t, err := callOpts.Backoff(ctx, req, i)
 		if err != nil {
+			log.Log("backoff error", err)
 			return errors.InternalServerError("go.micro.client", err.Error())
 		}
 
+		log.Log("before sleep",i)
 		// only sleep if greater than 0
 		if t.Seconds() > 0 {
 			time.Sleep(t)
 		}
-
+		log.Log("before select next node",i)
 		// select next node
 		node, err := next()
+		log.Log("next node",i,"err",err)
 		if err != nil && err == selector.ErrNotFound {
 			return errors.NotFound("go.micro.client", err.Error())
 		} else if err != nil {
 			return errors.InternalServerError("go.micro.client", err.Error())
 		}
+		log.Log("next ",i,"node ",node.Id,node.Address,node.Port)
 
 		// set the address
 		addr := node.Address
@@ -306,7 +312,9 @@ func (g *grpcClient) Call(ctx context.Context, req client.Request, rsp interface
 		}
 
 		// make the call
+		log.Log("make call ",i)
 		err = gcall(ctx, addr, req, rsp, callOpts)
+		log.Log("call",i," err",err)
 		g.opts.Selector.Mark(req.Service(), node, err)
 		return err
 	}
@@ -315,24 +323,32 @@ func (g *grpcClient) Call(ctx context.Context, req client.Request, rsp interface
 	var gerr error
 
 	for i := 0; i < callOpts.Retries; i++ {
+		log.Log("i=",i)
 		go func() {
+			log.Log("before call",i)
 			ch <- call(i)
+			log.Log("after call",i)
 		}()
 
 		select {
 		case <-ctx.Done():
+			log.Log("done",i, "ctx.Err()",ctx.Err())
 			return errors.New("go.micro.client", fmt.Sprintf("%v", ctx.Err()), 408)
 		case err := <-ch:
+			log.Log("err",err)
 			// if the call succeeded lets bail early
 			if err == nil {
 				return nil
 			}
 
+			log.Log("before callOptions ",i)
 			retry, rerr := callOpts.Retry(ctx, req, i, err)
+			log.Log("rerr",i, rerr)
 			if rerr != nil {
 				return rerr
 			}
 
+			log.Log("retry",i, retry)
 			if !retry {
 				return err
 			}
