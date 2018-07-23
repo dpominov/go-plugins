@@ -92,7 +92,7 @@ func (s *subscriber) resubscribe() {
 		case <-s.r.conn.close:
 			//yep, its shutdown case
 			return
-		//wait until we reconect to rabbit
+			//wait until we reconect to rabbit
 		case <-s.r.conn.waitConnection:
 		}
 
@@ -102,6 +102,7 @@ func (s *subscriber) resubscribe() {
 			s.r.mtx.Unlock()
 			continue
 		}
+
 		ch, sub, err := s.r.conn.Consume(
 			s.opts.Queue,
 			s.topic,
@@ -109,6 +110,7 @@ func (s *subscriber) resubscribe() {
 			s.opts.AutoAck,
 			s.durableQueue,
 		)
+
 		s.r.mtx.Unlock()
 		switch err {
 		case nil:
@@ -135,9 +137,16 @@ func (s *subscriber) resubscribe() {
 }
 
 func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.PublishOption) error {
+	opt := broker.PublishOptions{}
+
+	for _, o := range opts {
+		o(&opt)
+	}
+
 	m := amqp.Publishing{
 		Body:    msg.Body,
 		Headers: amqp.Table{},
+		//DeliveryMode:persistent,
 	}
 
 	for k, v := range msg.Header {
@@ -174,17 +183,6 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 
 	if r.conn == nil {
 		return nil, errors.New("connection is nil")
-	}
-
-	ch, sub, err := r.conn.Consume(
-		opt.Queue,
-		topic,
-		headers,
-		opt.AutoAck,
-		durableQueue,
-	)
-	if err != nil {
-		return nil, err
 	}
 
 	fn := func(msg amqp.Delivery) {
@@ -240,7 +238,9 @@ func (r *rbroker) Disconnect() error {
 	if r.conn == nil {
 		return errors.New("connection is nil")
 	}
-	return r.conn.Close()
+	ret := r.conn.Close()
+	r.wg.Wait() // wait all goroutines
+	return ret
 }
 
 func NewBroker(opts ...broker.Option) broker.Broker {
