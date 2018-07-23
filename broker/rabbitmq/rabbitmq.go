@@ -4,6 +4,8 @@ package rabbitmq
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/micro/go-micro/broker"
 	"github.com/micro/go-micro/cmd"
@@ -14,12 +16,20 @@ type rbroker struct {
 	conn  *rabbitMQConn
 	addrs []string
 	opts  broker.Options
+	mtx   sync.Mutex
+	wg    sync.WaitGroup
 }
 
 type subscriber struct {
-	opts  broker.SubscribeOptions
-	topic string
-	ch    *rabbitMQChannel
+	mtx          sync.Mutex
+	mayRun       bool
+	opts         broker.SubscribeOptions
+	topic        string
+	ch           *rabbitMQChannel
+	durableQueue bool
+	r            *rbroker
+	fn           func(msg amqp.Delivery)
+	headers      map[string]interface{}
 }
 
 type publication struct {
@@ -53,7 +63,75 @@ func (s *subscriber) Topic() string {
 }
 
 func (s *subscriber) Unsubscribe() error {
-	return s.ch.Close()
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.mayRun = false
+	if s.ch != nil {
+		return s.ch.Close()
+	}
+	return nil
+}
+
+func (s *subscriber) resubscribe() {
+	minResubscribeDelay := 100 * time.Millisecond
+	maxResubscribeDelay := 30 * time.Second
+	expFactor := time.Duration(2)
+	reSubscribeDelay := minResubscribeDelay
+	//loop until unsubscribe
+	for {
+		s.mtx.Lock()
+		mayRun := s.mayRun
+		s.mtx.Unlock()
+		if !mayRun {
+			// we are unsubscribed, showdown routine
+			return
+		}
+
+		select {
+		//check shutdown case
+		case <-s.r.conn.close:
+			//yep, its shutdown case
+			return
+		//wait until we reconect to rabbit
+		case <-s.r.conn.waitConnection:
+		}
+
+		// it may crash (panic) in case of Consume without connection, so recheck it
+		s.r.mtx.Lock()
+		if !s.r.conn.connected {
+			s.r.mtx.Unlock()
+			continue
+		}
+		ch, sub, err := s.r.conn.Consume(
+			s.opts.Queue,
+			s.topic,
+			s.headers,
+			s.opts.AutoAck,
+			s.durableQueue,
+		)
+		s.r.mtx.Unlock()
+		switch err {
+		case nil:
+			reSubscribeDelay = minResubscribeDelay
+			s.mtx.Lock()
+			s.ch = ch
+			s.mtx.Unlock()
+		default:
+			if reSubscribeDelay > maxResubscribeDelay {
+				reSubscribeDelay = maxResubscribeDelay
+			}
+			time.Sleep(reSubscribeDelay)
+			reSubscribeDelay *= expFactor
+			continue
+		}
+		for d := range sub {
+			s.r.wg.Add(1)
+			go func(d amqp.Delivery) {
+				s.fn(d)
+				s.r.wg.Done()
+			}(d)
+		}
+	}
 }
 
 func (r *rbroker) Publish(topic string, msg *broker.Message, opts ...broker.PublishOption) error {
@@ -121,13 +199,12 @@ func (r *rbroker) Subscribe(topic string, handler broker.Handler, opts ...broker
 		handler(&publication{d: msg, m: m, t: msg.RoutingKey})
 	}
 
-	go func() {
-		for d := range sub {
-			go fn(d)
-		}
-	}()
+	sret := &subscriber{topic: topic, opts: opt, mayRun: true, r: r,
+		durableQueue: durableQueue, fn: fn, headers: headers}
 
-	return &subscriber{ch: ch, topic: topic, opts: opt}, nil
+	go sret.resubscribe()
+
+	return sret, nil
 }
 
 func (r *rbroker) Options() broker.Options {
