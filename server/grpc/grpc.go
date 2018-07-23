@@ -389,7 +389,7 @@ func (g *grpcServer) processRequest(t transport.ServerTransport, stream *transpo
 		}
 		opts := &transport.Options{
 			Last:  true,
-			Delay: false,
+			//Delay: false,
 		}
 		if err := g.sendResponse(t, stream, replyv.Interface(), codec, opts); err != nil {
 			switch err := err.(type) {
