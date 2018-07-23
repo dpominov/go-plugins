@@ -6,29 +6,17 @@ import (
 	"sync"
 
 	"github.com/micro/go-micro/client"
-
 	"github.com/micro/grpc-go"
 )
 
 // Implements the streamer interface
 type grpcStream struct {
 	sync.RWMutex
-	seq     uint64
-	closed  chan bool
 	err     error
 	conn    *grpc.ClientConn
 	request client.Request
 	stream  grpc.ClientStream
 	context context.Context
-}
-
-func (g *grpcStream) isClosed() bool {
-	select {
-	case <-g.closed:
-		return true
-	default:
-		return false
-	}
 }
 
 func (g *grpcStream) Context() context.Context {
@@ -40,41 +28,27 @@ func (g *grpcStream) Request() client.Request {
 }
 
 func (g *grpcStream) Send(msg interface{}) error {
-	g.Lock()
-	defer g.Unlock()
-
-	if g.isClosed() {
-		g.err = errShutdown
-		return errShutdown
-	}
-
 	if err := g.stream.SendMsg(msg); err != nil {
-		g.err = err
+		g.setError(err)
 		return err
 	}
-
 	return nil
 }
 
-func (g *grpcStream) Recv(msg interface{}) error {
-	g.Lock()
-	defer g.Unlock()
-
-	if g.isClosed() {
-		g.err = errShutdown
-		return errShutdown
-	}
-
-	if err := g.stream.RecvMsg(msg); err != nil {
-		if err == io.EOF && !g.isClosed() {
-			g.err = io.ErrUnexpectedEOF
-			return io.ErrUnexpectedEOF
+func (g *grpcStream) Recv(msg interface{}) (err error) {
+	defer g.setError(err)
+	if err = g.stream.RecvMsg(msg); err != nil {
+		if err == io.EOF {
+			// #202 - inconsistent gRPC stream behavior
+			// the only way to tell if the stream is done is when we get a EOF on the Recv
+			// here we should close the underlying gRPC ClientConn
+			closeErr := g.conn.Close()
+			if closeErr != nil {
+				err = closeErr
+			}
 		}
-		g.err = err
-		return err
 	}
-
-	return nil
+	return
 }
 
 func (g *grpcStream) Error() error {
@@ -83,13 +57,17 @@ func (g *grpcStream) Error() error {
 	return g.err
 }
 
+func (g *grpcStream) setError(e error) {
+	g.Lock()
+	g.err = e
+	g.Unlock()
+}
+
+// Close the gRPC send stream
+// #202 - inconsistent gRPC stream behavior
+// The underlying gRPC stream should not be closed here since the
+// stream should still be able to receive after this function call
+// TODO: should the conn be closed in another way?
 func (g *grpcStream) Close() error {
-	select {
-	case <-g.closed:
-		return nil
-	default:
-		close(g.closed)
-		g.stream.CloseSend()
-		return g.conn.Close()
-	}
+	return g.stream.CloseSend()
 }

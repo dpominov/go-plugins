@@ -168,7 +168,7 @@ func (g *grpcClient) stream(ctx context.Context, address string, req client.Requ
 		ServerStreams: true,
 	}
 
-	st, err := grpc.NewClientStream(ctx, desc, cc, methodToGRPC(req.Method(), req.Request()))
+	st, err := cc.NewStream(ctx, desc, methodToGRPC(req.Method(), req.Request()))
 	if err != nil {
 		return nil, errors.InternalServerError("go.micro.client", fmt.Sprintf("Error creating stream: %v", err))
 	}
@@ -176,7 +176,6 @@ func (g *grpcClient) stream(ctx context.Context, address string, req client.Requ
 	return &grpcStream{
 		context: ctx,
 		request: req,
-		closed:  make(chan bool),
 		stream:  st,
 		conn:    cc,
 	}, nil
