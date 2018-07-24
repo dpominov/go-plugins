@@ -6,21 +6,21 @@ import (
 	"crypto/tls"
 
 	"github.com/micro/go-micro/client"
-	"github.com/micro/grpc-go"
+	"github.com/micro/grpc-go/encoding"
 )
 
 type codecsKey struct{}
 type tlsAuth struct{}
 
 // gRPC Codec to be used to encode/decode requests for a given content type
-func Codec(contentType string, c grpc.Codec) client.Option {
+func Codec(contentType string, c encoding.Codec) client.Option {
 	return func(o *client.Options) {
-		codecs := make(map[string]grpc.Codec)
+		codecs := make(map[string]encoding.Codec)
 		if o.Context == nil {
 			o.Context = context.Background()
 		}
 		if v := o.Context.Value(codecsKey{}); v != nil {
-			codecs = v.(map[string]grpc.Codec)
+			codecs = v.(map[string]encoding.Codec)
 		}
 		codecs[contentType] = c
 		o.Context = context.WithValue(o.Context, codecsKey{}, codecs)

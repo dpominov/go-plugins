@@ -44,6 +44,7 @@ import (
 
 	"github.com/micro/grpc-go"
 	"github.com/micro/grpc-go/codes"
+	"github.com/micro/grpc-go/encoding"
 	"github.com/micro/grpc-go/stats"
 	"github.com/micro/grpc-go/transport"
 )
@@ -109,7 +110,7 @@ func (p *parser) recvMsg(maxMsgSize int) (pf payloadFormat, msg []byte, err erro
 
 // encode serializes msg and prepends the message header. If msg is nil, it
 // generates the message header of 0 message length.
-func encode(c grpc.Codec, msg interface{}, cp grpc.Compressor, cbuf *bytes.Buffer, outPayload *stats.OutPayload) ([]byte, []byte, error) {
+func encode(c encoding.Codec, msg interface{}, cp grpc.Compressor, cbuf *bytes.Buffer, outPayload *stats.OutPayload) ([]byte, []byte, error) {
 	var b []byte
 	const (
 		payloadLen = 1
@@ -167,7 +168,7 @@ func checkRecvPayload(pf payloadFormat, recvCompress string, dc grpc.Decompresso
 	return nil
 }
 
-func recv(p *parser, c grpc.Codec, s *transport.Stream, dc grpc.Decompressor, m interface{}, maxMsgSize int) error {
+func recv(p *parser, c encoding.Codec, s *transport.Stream, dc grpc.Decompressor, m interface{}, maxMsgSize int) error {
 	pf, d, err := p.recvMsg(maxMsgSize)
 	if err != nil {
 		return err

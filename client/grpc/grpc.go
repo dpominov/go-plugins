@@ -22,6 +22,7 @@ import (
 
 	"github.com/micro/grpc-go"
 	"github.com/micro/grpc-go/credentials"
+	"github.com/micro/grpc-go/encoding"
 	gmetadata "github.com/micro/grpc-go/metadata"
 
 	"github.com/micro/go-log"
@@ -181,11 +182,11 @@ func (g *grpcClient) stream(ctx context.Context, address string, req client.Requ
 	}, nil
 }
 
-func (g *grpcClient) newGRPCCodec(contentType string) (grpc.Codec, error) {
-	codecs := make(map[string]grpc.Codec)
+func (g *grpcClient) newGRPCCodec(contentType string) (encoding.Codec, error) {
+	codecs := make(map[string]encoding.Codec)
 	if g.opts.Context != nil {
 		if v := g.opts.Context.Value(codecsKey{}); v != nil {
-			codecs = v.(map[string]grpc.Codec)
+			codecs = v.(map[string]encoding.Codec)
 		}
 	}
 	if c, ok := codecs[contentType]; ok {
@@ -322,8 +323,7 @@ func (g *grpcClient) Call(ctx context.Context, req client.Request, rsp interface
 	ch := make(chan error, callOpts.Retries)
 	var gerr error
 
-	for i := 0; i < callOpts.Retries; i++ {
-		log.Log(req.Service(),"i=",i)
+	for i := 0; i <= callOpts.Retries; i++ {
 		go func() {
 			log.Log(req.Service(),"before call",i)
 			ch <- call(i)
@@ -418,7 +418,7 @@ func (g *grpcClient) Stream(ctx context.Context, req client.Request, opts ...cli
 	ch := make(chan response, callOpts.Retries)
 	var grr error
 
-	for i := 0; i < callOpts.Retries; i++ {
+	for i := 0; i <= callOpts.Retries; i++ {
 		go func() {
 			s, err := call(i)
 			ch <- response{s, err}
