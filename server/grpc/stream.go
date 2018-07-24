@@ -40,6 +40,7 @@ import (
 
 	"github.com/micro/grpc-go"
 	"github.com/micro/grpc-go/codes"
+	"github.com/micro/grpc-go/encoding"
 	"github.com/micro/grpc-go/transport"
 
 	"github.com/micro/go-micro/server"
@@ -50,7 +51,7 @@ type rpcStream struct {
 	t          transport.ServerTransport
 	s          *transport.Stream
 	p          *parser
-	codec      grpc.Codec
+	codec      encoding.Codec
 	cp         grpc.Compressor
 	dc         grpc.Decompressor
 	cbuf       *bytes.Buffer
