@@ -16,7 +16,7 @@ type pool struct {
 }
 
 type poolConn struct {
-	cc      *grpc.ClientConn
+	*grpc.ClientConn
 	created int64
 }
 
@@ -42,7 +42,7 @@ func (p *pool) getConn(addr string, opts ...grpc.DialOption) (*poolConn, error) 
 
 		// if conn is old kill it and move on
 		if d := now - conn.created; d > p.ttl {
-			conn.cc.Close()
+			conn.ClientConn.Close()
 			continue
 		}
 
@@ -66,7 +66,7 @@ func (p *pool) getConn(addr string, opts ...grpc.DialOption) (*poolConn, error) 
 func (p *pool) release(addr string, conn *poolConn, err error) {
 	// don't store the conn if it has errored
 	if err != nil {
-		conn.cc.Close()
+		conn.ClientConn.Close()
 		return
 	}
 
@@ -75,7 +75,7 @@ func (p *pool) release(addr string, conn *poolConn, err error) {
 	conns := p.conns[addr]
 	if len(conns) >= p.size {
 		p.Unlock()
-		conn.cc.Close()
+		conn.ClientConn.Close()
 		return
 	}
 	p.conns[addr] = append(conns, conn)

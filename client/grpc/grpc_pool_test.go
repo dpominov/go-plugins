@@ -37,7 +37,7 @@ func testPool(t *testing.T, size int, ttl time.Duration) {
 
 		rsp := pb.HelloReply{}
 
-		err = grpc.Invoke(context.TODO(), "/helloworld.Greeter/SayHello", &pb.HelloRequest{Name: "John"}, &rsp, cc.cc)
+		err = cc.Invoke(context.TODO(), "/helloworld.Greeter/SayHello", &pb.HelloRequest{Name: "John"}, &rsp)
 		if err != nil {
 			t.Fatal(err)
 		}

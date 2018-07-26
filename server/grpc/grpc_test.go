@@ -63,7 +63,7 @@ func TestGRPCServer(t *testing.T) {
 	for _, method := range testMethods {
 		rsp := pb.Response{}
 
-		if err := grpc.Invoke(context.Background(), method, &pb.Request{Name: "John"}, &rsp, cc); err != nil {
+		if err := cc.Invoke(context.Background(), method, &pb.Request{Name: "John"}, &rsp); err != nil {
 			t.Fatalf("error calling server: %v", err)
 		}
 
