@@ -103,7 +103,7 @@ func (s *subscriber) resubscribe() {
 			continue
 		}
 
-		s.r.conn.Channel.channel.Qos(1000,100*1024,true)
+		s.r.conn.Channel.channel.Qos(1000, 0, true)
 		ch, sub, err := s.r.conn.Consume(
 			s.opts.Queue,
 			s.topic,
